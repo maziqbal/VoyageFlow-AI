@@ -1,7 +1,10 @@
 
+"""VoyageFlow AI - Multi-Agent Travel Planning System."""
+
 import os
 import operator
-from typing import TypedDict, Annotated
+from uuid import uuid4
+from typing import Annotated, TypedDict
 
 import psycopg
 from psycopg.rows import dict_row
@@ -21,7 +24,7 @@ from langchain_groq import ChatGroq
 
 from tools.tavily_tool import tavily_search
 from tools.flight_tool import search_flights
-from uuid import uuid4
+
 
 # --------------------------------------------------
 # Environment Configuration
@@ -31,6 +34,11 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not configured. Check your .env file."
+    )
+
 
 # --------------------------------------------------
 # LLM Configuration
@@ -38,7 +46,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 llm = ChatGroq(
     model="openai/gpt-oss-120b",
-    temperature=0
+    temperature=0,
 )
 
 
@@ -69,7 +77,7 @@ def flight_agent(state: TravelState):
         "messages": [
             AIMessage(content="Flight results fetched")
         ],
-        "llm_calls": state.get("llm_calls", 0) + 1
+        "llm_calls": state.get("llm_calls", 0) + 1,
     }
 
 
@@ -87,7 +95,7 @@ def hotel_agent(state: TravelState):
         "messages": [
             AIMessage(content="Hotel information fetched")
         ],
-        "llm_calls": state.get("llm_calls", 0) + 1
+        "llm_calls": state.get("llm_calls", 0) + 1,
     }
 
 
@@ -97,29 +105,29 @@ def hotel_agent(state: TravelState):
 
 def itinerary_agent(state: TravelState):
     prompt = f"""
-    Create a travel itinerary.
+Create a travel itinerary.
 
-    User Query:
-    {state['user_query']}
+User Query:
+{state['user_query']}
 
-    Flight Results:
-    {state['flight_results']}
+Flight Results:
+{state['flight_results']}
 
-    Hotel Results:
-    {state['hotel_results']}
-    """
+Hotel Results:
+{state['hotel_results']}
+"""
 
     response = llm.invoke([
         SystemMessage(
-            content="You are an expert travel planner"
+            content="You are an expert travel planner."
         ),
-        HumanMessage(content=prompt)
+        HumanMessage(content=prompt),
     ])
 
     return {
         "itinerary": response.content,
         "messages": [response],
-        "llm_calls": state.get("llm_calls", 0) + 1
+        "llm_calls": state.get("llm_calls", 0) + 1,
     }
 
 
@@ -129,25 +137,34 @@ def itinerary_agent(state: TravelState):
 
 def final_agent(state: TravelState):
     final_prompt = f"""
-    Generate final travel response.
+Generate a final travel planning response.
 
-    Flights:
-    {state['flight_results']}
+User Request:
+{state['user_query']}
 
-    Hotels:
-    {state['hotel_results']}
+Flight Information:
+{state['flight_results']}
 
-    Itinerary:
-    {state['itinerary']}
-    """
+Hotel Information:
+{state['hotel_results']}
+
+Itinerary:
+{state['itinerary']}
+
+Clearly distinguish verified information from estimates.
+Do not invent flight prices or confirmed booking availability.
+"""
 
     response = llm.invoke([
-        HumanMessage(content=final_prompt)
+        SystemMessage(
+            content="You are a helpful AI travel planning assistant."
+        ),
+        HumanMessage(content=final_prompt),
     ])
 
     return {
         "messages": [response],
-        "llm_calls": state.get("llm_calls", 0) + 1
+        "llm_calls": state.get("llm_calls", 0) + 1,
     }
 
 
@@ -170,13 +187,8 @@ graph.add_edge("final_agent", END)
 
 
 # --------------------------------------------------
-# PostgreSQL Checkpointer Configuration
+# PostgreSQL Checkpoint Persistence
 # --------------------------------------------------
-
-if not DATABASE_URL:
-    raise RuntimeError(
-        "DATABASE_URL is not configured. Check your .env file."
-    )
 
 _conn = psycopg.connect(
     DATABASE_URL,
@@ -186,16 +198,18 @@ _conn = psycopg.connect(
 
 checkpointer = PostgresSaver(_conn)
 
-# Initialize LangGraph checkpoint tables
+# Initialize checkpoint tables
 checkpointer.setup()
 
-# Compile the graph with PostgreSQL persistence
+# IMPORTANT:
+# Expose the compiled application for frontend.py
 app = graph.compile(checkpointer=checkpointer)
 
 
 # --------------------------------------------------
-# CLI Entry Point
+# Command-Line Entry Point
 # --------------------------------------------------
+
 if __name__ == "__main__":
     config = {
         "configurable": {
@@ -203,23 +217,24 @@ if __name__ == "__main__":
         }
     }
 
-    user_input = input("Enter travel request: ")
+    user_input = input("Enter travel request: ").strip()
 
-    result = app.invoke(
-        {
-            "messages": [
-                HumanMessage(content=user_input)
-            ],
-            "user_query": user_input,
-            "flight_results": "",
-            "hotel_results": "",
-            "itinerary": "",
-            "llm_calls": 0
-        },
-        config=config
-    )
+    if not user_input:
+        print("Please enter a travel request.")
+    else:
+        result = app.invoke(
+            {
+                "messages": [
+                    HumanMessage(content=user_input)
+                ],
+                "user_query": user_input,
+                "flight_results": "",
+                "hotel_results": "",
+                "itinerary": "",
+                "llm_calls": 0,
+            },
+            config=config,
+        )
 
-    print("\nFINAL RESPONSE:\n")
-
-    for msg in result["messages"]:
-        print(msg.content)
+        print("\nFINAL RESPONSE:\n")
+        print(result["messages"][-1].content)
