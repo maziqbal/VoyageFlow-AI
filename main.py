@@ -21,7 +21,7 @@ from langchain_groq import ChatGroq
 
 from tools.tavily_tool import tavily_search
 from tools.flight_tool import search_flights
-
+from uuid import uuid4
 
 # --------------------------------------------------
 # Environment Configuration
@@ -196,11 +196,10 @@ app = graph.compile(checkpointer=checkpointer)
 # --------------------------------------------------
 # CLI Entry Point
 # --------------------------------------------------
-
 if __name__ == "__main__":
     config = {
         "configurable": {
-            "thread_id": "user_aarohi"
+            "thread_id": f"travel-{uuid4().hex[:12]}"
         }
     }
 
