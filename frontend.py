@@ -1,8 +1,12 @@
-"""VoyageFlow AI — Streamlit travel planning frontend."""
+"""VoyageFlow AI — Streamlit travel planning application."""
+
 from __future__ import annotations
 
+import logging
+import re
 from datetime import datetime
 from html import escape
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import streamlit as st
@@ -10,502 +14,1132 @@ from langchain_core.messages import HumanMessage
 
 from main import app
 
+
+# ============================================================
+# APPLICATION CONFIGURATION
+# ============================================================
+
+logger = logging.getLogger(__name__)
+
 st.set_page_config(
-    page_title="VoyageFlow AI · Intelligent Travel Planner",
-    page_icon="🌍",
+    page_title="VoyageFlow AI | Intelligent Travel Planner",
+    page_icon="✈️",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="locked",
 )
 
-# Only static, developer-authored HTML is passed using unsafe_allow_html=True.
-# Never interpolate AI responses or user input into the HTML templates.
-ICONS = {
-    "plane": '<path d="M17.8 21.2 15 12l6.5-6.5a2.1 2.1 0 0 0-3-3L12 9 2.8 6.2l-2 2 7.4 5.1-4.1 4.1-2.9-.4-1.2 1.2 4.7 2.1 2.1 4.7 1.2-1.2-.4-2.9 4.1-4.1 5.1 7.4z"/>',
-    "hotel": '<path d="M4 21V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16M2 21h20M9 21v-5h6v5M8 7h2M14 7h2M8 11h2M14 11h2"/>',
-    "map": '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6ZM9 3v15M15 6v15"/>',
-    "sparkle": '<path d="m12 3 1.9 6.1L20 11l-6.1 1.9L12 19l-1.9-6.1L4 11l6.1-1.9L12 3ZM19 17l.7 1.3L21 19l-1.3.7L19 21l-.7-1.3L17 19l1.3-.7L19 17Z"/>',
-    "compass": '<circle cx="12" cy="12" r="9"/><path d="m15.7 8.3-2.3 5.1-5.1 2.3 2.3-5.1 5.1-2.3Z"/>',
-    "camera": '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
-    "palm": '<path d="M13 8c0-2.76-2.24-5-5-5s-5 2.24-5 5c0 1.64.81 3.09 2.05 4H4v2h4v5h2v-5h4v-2h-2.05C12.19 11.09 13 9.64 13 8z"/><path d="M18 10a4 4 0 0 0-4-4v2a2 2 0 0 1 2 2h2z"/><path d="M21 14a7 7 0 0 0-7-7v2a5 5 0 0 1 5 5h2z"/>',
-}
 
-
-def icon(name: str, size: int = 20) -> str:
-    """Return an application-authored SVG icon, independent of system fonts."""
-    return (
-        f'<svg width="{size}" height="{size}" viewBox="0 0 24 24" '
-        'fill="none" stroke="currentColor" stroke-width="2" '
-        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-        f'{ICONS.get(name, ICONS["sparkle"])}</svg>'
-    )
-
+# ============================================================
+# DESIGN SYSTEM
+# ============================================================
 
 st.markdown(
     """
 <style>
-/* Clean, professional dark palette */
 :root {
-    --bg: #131b24;
-    --surface: #1c2733;
-    --surface-hover: #263545;
-    --stroke: rgba(255, 255, 255, 0.12);
-    --fg: #f8fafc;
-    --muted: #94a3b8;
-    --accent: #fbbf24;
-    --accent-hover: #f59e0b;
+    --background: #f5f7f5;
+    --surface: rgba(255,255,255,.88);
+    --border: #dce6df;
+    --text: #20382f;
+    --muted: #63796e;
+    --accent: #287467;
 }
 
-html, body, .stApp, [data-testid="stAppViewContainer"] {
-    background: var(--bg) !important;
-    color: var(--fg) !important;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+html, body, .stApp,
+[data-testid="stAppViewContainer"] {
+    background:
+        radial-gradient(
+            circle at 90% 5%,
+            rgba(172,215,191,.23),
+            transparent 36%
+        ),
+        radial-gradient(
+            circle at 10% 90%,
+            rgba(213,229,219,.30),
+            transparent 42%
+        ),
+        #f5f7f5 !important;
+    color: var(--text) !important;
 }
 
-[data-testid="stHeader"] { 
-    background: transparent !important; 
-}
-[data-testid="stToolbar"] { background: transparent !important; }
-
-/* Fix Sidebar Collapse Button visibility (makes the collapse arrow bright & clearly visible) */
-[data-testid="stSidebarCollapseButton"] svg {
-    fill: var(--accent) !important;
-    color: var(--accent) !important;
-}
-button[kind="header"] svg, [data-testid="stSidebarCollapsedControl"] svg {
-    color: var(--fg) !important;
-    fill: var(--fg) !important;
+[data-testid="stHeader"] {
+    background: transparent !important;
 }
 
-.block-container { 
-    max-width: 1180px !important; 
-    padding-top: 2rem !important; 
-    padding-bottom: 3rem !important; 
+.block-container {
+    max-width: 1120px !important;
+    padding-top: 1.5rem !important;
+    padding-bottom: 2rem !important;
 }
 
-/* Sidebar styling */
+.stApp h1, .stApp h2, .stApp h3,
+.stApp h4, .stApp p, .stApp label {
+    color: var(--text);
+}
+
+[data-testid="stCaptionContainer"] p {
+    color: var(--muted) !important;
+}
+
+/* Sidebar */
+
 [data-testid="stSidebar"] {
-    background: #10171f !important;
-    border-right: 1px solid var(--stroke) !important;
-}
-[data-testid="stSidebar"] > div:first-child { 
-    padding-top: 2.5rem !important; 
-}
-[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
-[data-testid="stSidebar"] label, [data-testid="stSidebar"] p,
-[data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2,
-[data-testid="stSidebar"] h3 { color: var(--fg) !important; }
-[data-testid="stSidebar"] hr { border-color: var(--stroke) !important; margin: 1.2rem 0 !important; }
-
-/* Brand & Sidebar Components */
-.vf-brand {
-    display: flex;
-    gap: 0.85rem;
-    align-items: center;
-    margin-bottom: 0.35rem;
-}
-.vf-brand-mark {
-    width: 42px;
-    height: 42px;
-    display: grid;
-    place-items: center;
-    border-radius: 12px;
-    background: rgba(251, 191, 36, 0.15);
-    color: var(--accent);
-    border: 1px solid rgba(251, 191, 36, 0.3);
-}
-.vf-brand-name {
-    font-weight: 700;
-    font-size: 1.2rem;
-    color: #ffffff;
-}
-.vf-brand-sub {
-    font-size: 0.78rem;
-    color: var(--muted);
-}
-.vf-side-heading {
-    font-weight: 700;
-    font-size: 0.82rem;
-    color: #cbd5e1;
-    margin: 0.2rem 0 0.5rem;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-}
-.vf-step {
-    display: flex;
-    align-items: center;
-    gap: 0.8rem;
-    padding: 0.5rem 0.6rem;
-    color: #e2e8f0;
-    font-size: 0.88rem;
-    border-radius: 8px;
-}
-.vf-step-icon {
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
-    display: grid;
-    place-items: center;
-    color: var(--accent);
-    background: rgba(251, 191, 36, 0.1);
-    border: 1px solid rgba(251, 191, 36, 0.2);
-}
-.vf-tech-badge {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--stroke);
-    padding: 0.75rem;
-    border-radius: 10px;
-    font-size: 0.78rem;
-    color: var(--muted);
-    line-height: 1.5;
-    margin-top: 0.75rem;
+    background: rgba(255,255,255,.94) !important;
+    border-right: 1px solid var(--border) !important;
 }
 
-/* Hero Section */
-.vf-hero {
-    border: 1px solid var(--stroke);
-    border-radius: 18px;
-    padding: 2.2rem 2.5rem;
-    margin: 0 0 1.75rem;
-    background: var(--surface);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+    gap: .45rem !important;
 }
-.vf-overline {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--accent);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    font-size: 0.75rem;
-    font-weight: 700;
-    margin-bottom: 0.7rem;
+
+[data-testid="stSidebar"] hr {
+    border-color: var(--border) !important;
+    margin: .75rem 0 !important;
 }
-.vf-title {
-    color: #ffffff;
-    font-size: clamp(2rem, 3.5vw, 2.8rem);
+
+.brand-name {
+    font-size: 1.25rem;
     font-weight: 800;
-    line-height: 1.15;
-    margin: 0 0 0.6rem;
+    color: #1c4537;
+    letter-spacing: -.03em;
 }
-.vf-description {
-    font-size: 1rem;
+
+.brand-description {
+    color: #71857a;
+    font-size: .82rem;
+    margin-top: .2rem;
+}
+
+.sidebar-title {
+    color: #234437;
+    font-size: .87rem;
+    font-weight: 750;
+    margin: .2rem 0 .5rem;
+}
+
+.agent-step {
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+    background: #f2f7f3;
+    border: 1px solid #e3ebe5;
+    border-radius: 11px;
+    padding: .5rem .7rem;
+    margin-bottom: .35rem;
+    color: #365347;
+    font-size: .84rem;
+}
+
+.step-number {
+    display: grid;
+    place-items: center;
+    width: 25px;
+    height: 25px;
+    border-radius: 8px;
+    background: #dceee4;
+    color: #246a55;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+
+.tech-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: .4rem 0 .8rem;
+}
+
+.tech-badge {
+    background: #edf5ef;
+    border: 1px solid #d5e6db;
+    border-radius: 7px;
+    padding: 5px 9px;
+    font-size: .74rem;
+    font-weight: 650;
+    color: #315c4c;
+}
+
+.sidebar-notice {
+    background: #f4f8f5;
+    border-left: 3px solid #7ea997;
+    border-radius: 7px;
+    padding: .75rem .8rem;
+    color: #60776b;
+    font-size: .77rem;
     line-height: 1.6;
-    color: var(--muted);
-    max-width: 680px;
+}
+
+/* Landing page */
+
+.hero {
+    background: linear-gradient(
+        115deg,
+        rgba(255,255,255,.96),
+        rgba(234,246,238,.86)
+    );
+    border: 1px solid #d5e5da;
+    border-radius: 19px;
+    padding: 1.25rem 1.5rem;
+    box-shadow: 0 10px 30px rgba(34,75,54,.045);
+    margin-bottom: 1rem;
+    backdrop-filter: blur(18px);
+}
+
+.hero-eyebrow {
+    color: #287467;
+    font-size: .69rem;
+    font-weight: 800;
+    letter-spacing: .13em;
+    margin-bottom: .35rem;
+}
+
+.hero-title {
+    font-size: clamp(1.65rem, 3vw, 2.15rem);
+    color: #193a2c;
+    font-weight: 800;
+    letter-spacing: -.045em;
+    margin: 0 0 .4rem;
+    line-height: 1.2;
+}
+
+.hero-description {
+    color: #536e61;
+    line-height: 1.6;
+    font-size: .91rem;
     margin: 0;
 }
-.vf-label {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    font-weight: 700;
-    color: var(--fg);
-    font-size: 1.05rem;
-    margin: 0.5rem 0 0.75rem;
-}
-.vf-label svg { color: var(--accent); }
-.vf-help {
-    font-size: 0.85rem;
-    color: var(--muted);
-    margin-top: 0.65rem;
-}
-.vf-rule {
-    height: 1px;
-    background: var(--stroke);
-    margin: 1.5rem 0;
+
+.section-heading {
+    font-size: .99rem;
+    font-weight: 750;
+    color: #243e32;
+    margin: .4rem 0 .6rem;
 }
 
-/* Destination Tile Buttons with Icons */
-.vf-dest-note { color: var(--muted); font-size: 0.85rem; margin: -0.2rem 0 0.85rem; }
-
-div[class*="st-key-destination_"] button {
-    background: var(--surface) !important;
-    border: 1px solid var(--stroke) !important;
-    min-height: 4.8rem !important;
-    padding: 0.9rem 1.1rem !important;
-    border-radius: 12px !important;
-    justify-content: flex-start !important;
-    text-align: left !important;
-    transition: all 0.2s ease !important;
-}
-div[class*="st-key-destination_"] button:hover {
-    background: var(--surface-hover) !important;
-    border-color: var(--accent) !important;
-    transform: translateY(-2px);
-}
-div[class*="st-key-destination_"] button p {
-    font-size: 0.92rem !important;
-    font-weight: 600 !important;
-    color: var(--fg) !important;
+.section-help {
+    font-size: .79rem;
+    color: #72867b;
+    margin: .55rem 0;
 }
 
-/* Form controls & Buttons */
+/* Buttons */
+
 [data-testid="stButton"] button,
 [data-testid="stDownloadButton"] button {
-    background: var(--surface) !important;
-    color: var(--fg) !important;
-    border: 1px solid var(--stroke) !important;
-    border-radius: 10px !important;
+    background: #fff !important;
+    border: 1px solid #d8e5dc !important;
+    color: #294d3e !important;
+    border-radius: 12px !important;
     min-height: 2.8rem !important;
-    font-weight: 600 !important;
-    transition: all 0.15s ease !important;
-}
-[data-testid="stButton"] button:hover, [data-testid="stDownloadButton"] button:hover {
-    background: var(--surface-hover) !important;
-    border-color: var(--accent) !important;
-}
-[data-testid="stButton"] button[kind="primary"] {
-    color: #111827 !important;
-    background: var(--accent) !important;
-    border-color: var(--accent) !important;
-    font-weight: 750 !important;
-}
-[data-testid="stButton"] button[kind="primary"]:hover {
-    background: var(--accent-hover) !important;
-    border-color: var(--accent-hover) !important;
-}
-[data-testid="stTextArea"] textarea, [data-testid="stTextInput"] input {
-    background: #0d131a !important;
-    color: var(--fg) !important;
-    border: 1px solid var(--stroke) !important;
-    border-radius: 10px !important;
-}
-[data-testid="stTextArea"] textarea { min-height: 110px !important; }
-[data-testid="stTextArea"] textarea:focus, [data-testid="stTextInput"] input:focus {
-    border-color: var(--accent) !important;
-    box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.2) !important;
+    font-weight: 650 !important;
 }
 
-/* Enhanced Tabs & Results Styling */
-[data-testid="stTabs"] [role="tablist"] { gap: 0.4rem; border-bottom: 1px solid var(--stroke) !important; }
+[data-testid="stButton"] button *,
+[data-testid="stDownloadButton"] button * {
+    color: inherit !important;
+}
+
+[data-testid="stButton"] button:hover,
+[data-testid="stDownloadButton"] button:hover {
+    background: #eff7f1 !important;
+    border-color: #91b9a3 !important;
+}
+
+[data-testid="stButton"] button[kind="primary"] {
+    background: #287467 !important;
+    border-color: #287467 !important;
+    color: white !important;
+    min-height: 3rem !important;
+    font-weight: 750 !important;
+}
+
+[data-testid="stButton"] button[kind="primary"]:hover {
+    background: #205d53 !important;
+    color: white !important;
+}
+
+/* Inputs */
+
+[data-testid="stTextArea"] textarea,
+[data-testid="stTextInput"] input {
+    background: rgba(255,255,255,.92) !important;
+    color: #243e32 !important;
+    border: 1px solid #d6e4db !important;
+    border-radius: 12px !important;
+}
+
+[data-testid="stTextArea"] textarea::placeholder {
+    color: #82988b !important;
+}
+
+[data-testid="stTextInput"] input:disabled {
+    color: #607b6d !important;
+    -webkit-text-fill-color: #607b6d !important;
+}
+
+/* Results heading */
+
+.results-intro {
+    padding: 1.25rem 1.5rem;
+    background: rgba(255,255,255,.89);
+    border: 1px solid var(--border);
+    border-radius: 17px;
+    margin: 1.25rem 0;
+}
+
+.results-kicker {
+    color: #287467;
+    font-size: .7rem;
+    letter-spacing: .1em;
+    font-weight: 800;
+}
+
+.results-title {
+    color: #1c3b2e;
+    font-size: 1.55rem;
+    font-weight: 800;
+    margin: .35rem 0;
+}
+
+.results-subtitle {
+    color: #70867a;
+    font-size: .85rem;
+    line-height: 1.55;
+}
+
+/* Cards */
+
+.result-card {
+    background: rgba(255,255,255,.92);
+    border: 1px solid #dce7df;
+    border-radius: 15px;
+    padding: 1.1rem 1.25rem;
+    margin-bottom: .75rem;
+    box-shadow: 0 5px 18px rgba(33,70,48,.035);
+}
+
+.card-eyebrow {
+    color: #688173;
+    font-size: .68rem;
+    font-weight: 750;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+}
+
+.card-title {
+    color: #203c30;
+    font-size: 1.05rem;
+    font-weight: 750;
+    margin: .35rem 0;
+}
+
+.card-muted {
+    color: #6a8174;
+    font-size: .84rem;
+    line-height: 1.6;
+}
+
+.flight-route {
+    display: grid;
+    grid-template-columns: 1fr 42px 1fr;
+    gap: 10px;
+    align-items: center;
+    margin: .9rem 0;
+}
+
+.flight-airport {
+    font-size: 1rem;
+    font-weight: 750;
+    color: #244437;
+    overflow-wrap: anywhere;
+}
+
+.flight-route-arrow {
+    color: #7ca38b;
+    text-align: center;
+    font-size: 1.25rem;
+}
+
+.flight-status {
+    display: inline-block;
+    border-radius: 20px;
+    padding: 5px 11px;
+    background: #edf5ee;
+    border: 1px solid #d9e8db;
+    color: #426e4f;
+    font-size: .75rem;
+    font-weight: 700;
+}
+
+.result-label {
+    font-weight: 750;
+    color: #234437;
+    margin-bottom: .75rem;
+}
+
+/* Tabs */
+
+[data-testid="stTabs"] [role="tablist"] {
+    gap: .35rem;
+    border-bottom: 1px solid #dce6df !important;
+}
+
 [data-testid="stTabs"] [role="tab"] {
-    color: var(--muted) !important;
+    color: #526c5d !important;
     font-weight: 650 !important;
-    padding: 0.7rem 1.2rem !important;
-    border-radius: 8px 8px 0 0 !important;
+    padding: .7rem 1rem !important;
 }
-[data-testid="stTabs"] [role="tab"]:hover { color: #fff !important; background: rgba(255, 255, 255, 0.05) !important; }
+
+[data-testid="stTabs"] [role="tab"] * {
+    color: inherit !important;
+}
+
 [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
-    color: var(--accent) !important;
-    background: var(--surface) !important;
-    border-bottom: 3px solid var(--accent) !important;
+    color: #287467 !important;
 }
+
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+    background: #287467 !important;
+}
+
+[data-testid="stTabs"] [role="tabpanel"] {
+    padding-top: 1rem !important;
+}
+
+/* Report-style Markdown blocks */
+
+.report-container {
+    padding: .3rem 0;
+}
+
+.report-heading {
+    font-weight: 800;
+    color: #244236;
+    margin-bottom: .7rem;
+}
+
+/* Native Streamlit cards and metrics */
+
+[data-testid="stVerticalBlockBorderWrapper"] > div {
+    border-color: #dce6df !important;
+    border-radius: 15px !important;
+}
+
 [data-testid="stMetric"] {
-    background: var(--surface);
-    border: 1px solid var(--stroke);
-    border-radius: 12px;
-    padding: 0.75rem 1rem;
+    background: rgba(255,255,255,.87);
+    border: 1px solid #dce6df;
+    border-radius: 13px;
+    padding: .75rem 1rem;
+}
+
+[data-testid="stMetric"] * {
+    color: #284538 !important;
+}
+
+@media(max-width:768px) {
+    .block-container {
+        padding: 1rem .8rem 2rem !important;
+    }
+    .hero {
+        padding: 1rem 1.1rem;
+    }
+    .flight-route {
+        grid-template-columns: 1fr 25px 1fr;
+    }
 }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-DESTINATIONS = (
-    ("Tokyo", "Japan", "🇯🇵", "Plan 7 days in Tokyo with hotels, attractions and a realistic budget."),
-    ("Paris", "France", "🇫🇷", "Plan 5 days in Paris departing from Helsinki, with hotels and sightseeing."),
-    ("Rome", "Italy", "🇮🇹", "Plan 4 days in Rome with hotels, food and historic attractions."),
-    ("Bangkok", "Thailand", "🇹🇭", "Plan 6 days in Bangkok with hotels, food and sightseeing."),
-)
+
+# ============================================================
+# APPLICATION CONSTANTS
+# ============================================================
+
+DESTINATIONS = [
+    (
+        "Tokyo",
+        "Plan a 5-day trip to Tokyo, Japan, "
+        "including hotels, sightseeing and an estimated budget.",
+    ),
+    (
+        "Paris",
+        "Plan a 5-day trip to Paris, France, "
+        "including hotels, attractions and local transport.",
+    ),
+    (
+        "Rome",
+        "Plan a 4-day trip to Rome, Italy, "
+        "including hotels, food and historic attractions.",
+    ),
+    (
+        "Bangkok",
+        "Plan a 6-day trip to Bangkok, Thailand, "
+        "including hotels, food and sightseeing.",
+    ),
+]
+
 AGENTS = {
-    "flight_agent": ("Flight information", "flight_results"),
-    "hotel_agent": ("Hotel research", "hotel_results"),
+    "flight_agent": ("Flight research", "flight_results"),
+    "hotel_agent": ("Hotel discovery", "hotel_results"),
     "itinerary_agent": ("Itinerary", "itinerary"),
-    "final_agent": ("Final response", "final_response"),
+    "final_agent": ("Final plan", "final_response"),
 }
 
+
+# ============================================================
+# SESSION MANAGEMENT
+# ============================================================
 
 def new_thread_id() -> str:
     return f"travel-{uuid4().hex[:12]}"
 
 
-def export_markdown(query: str, thread_id: str, results: dict[str, str]) -> str:
-    parts = [
+def initialize_session() -> None:
+    if "thread_id" not in st.session_state:
+        st.session_state.thread_id = new_thread_id()
+
+    if "trip_query" not in st.session_state:
+        st.session_state.trip_query = ""
+
+    if "last_plan" not in st.session_state:
+        st.session_state.last_plan = None
+
+
+def select_destination(query: str) -> None:
+    st.session_state.trip_query = query
+    st.session_state.last_plan = None
+
+
+def start_new_trip() -> None:
+    st.session_state.thread_id = new_thread_id()
+    st.session_state.trip_query = ""
+    st.session_state.last_plan = None
+
+
+initialize_session()
+
+
+# ============================================================
+# PRESENTATION HELPERS
+# ============================================================
+
+def safe_html(value: object) -> str:
+    """Escape external or model-provided text for HTML output."""
+    return escape(str(value), quote=True)
+
+
+def safe_source_url(url: str) -> str | None:
+    """Accept only HTTP(S) links returned by search providers."""
+    try:
+        parsed = urlparse(url.strip())
+    except ValueError:
+        return None
+
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        return url.strip()
+
+    return None
+
+
+def parse_flights(text: str) -> list[dict[str, str]]:
+    """Parse the current Aviationstack text output into display cards.
+
+    This is a temporary presentation adapter until the flight
+    tool provides structured JSON-compatible results.
+    """
+    flights = []
+
+    for block in re.split(r"\n\s*\n", text.strip()):
+        record = {}
+
+        for line in block.splitlines():
+            if ":" not in line:
+                continue
+
+            label, value = line.split(":", 1)
+            key = label.strip().lower()
+
+            if key in {"airline", "departure", "arrival", "status"}:
+                record[key] = value.strip()
+
+        if "departure" in record or "arrival" in record:
+            flights.append(record)
+
+    return flights
+
+
+def parse_hotels(text: str) -> list[dict[str, str]]:
+    """Parse formatted Tavily results into hotel research cards.
+
+    Tavily returns web search results, not confirmed hotel offers.
+    """
+    hotels = []
+
+    blocks = re.split(
+        r"\n\s*\n(?=\d+\.\s)",
+        text.strip(),
+    )
+
+    for block in blocks:
+        lines = [line.strip() for line in block.splitlines()]
+
+        if not lines:
+            continue
+
+        heading = re.match(
+            r"^\d+\.\s+(.+)$",
+            lines[0],
+        )
+
+        if not heading:
+            continue
+
+        title = heading.group(1).strip().strip("*")
+        url = ""
+        description = []
+
+        for line in lines[1:]:
+            if line.startswith(("https://", "http://")) and not url:
+                url = line
+            elif line:
+                description.append(line)
+
+        hotels.append({
+            "title": title,
+            "url": url,
+            "description": " ".join(description),
+        })
+
+    return hotels
+
+
+def export_markdown(
+    query: str,
+    thread_id: str,
+    results: dict[str, str],
+) -> str:
+    sections = [
         "# VoyageFlow AI — Travel Plan",
         f"**Request:** {query}",
         f"**Generated:** {datetime.now().astimezone():%Y-%m-%d %H:%M %Z}",
         f"**Session:** {thread_id}",
     ]
-    for label, key in (
+
+    for title, key in (
         ("Flight information", "flight_results"),
         ("Hotel research", "hotel_results"),
         ("Itinerary", "itinerary"),
         ("Final travel plan", "final_response"),
     ):
-        parts.append(f"## {label}\n\n{results.get(key) or 'No data available.'}")
-    parts.append("*Research only. Confirm pricing, schedules and availability before booking.*")
-    return "\n\n".join(parts) + "\n"
+        content = results.get(key) or "No data available."
+        sections.append(f"## {title}\n\n{content}")
+
+    sections.append(
+        "*Research only. Verify pricing, schedules and "
+        "availability directly with travel providers.*"
+    )
+
+    return "\n\n".join(sections) + "\n"
 
 
-if "thread_id" not in st.session_state:
-    st.session_state.thread_id = new_thread_id()
-if "trip_query" not in st.session_state:
-    st.session_state.trip_query = ""
-if "last_plan" not in st.session_state:
-    st.session_state.last_plan = None
+# ============================================================
+# SIDEBAR
+# ============================================================
 
 with st.sidebar:
     st.markdown(
-        '<div class="vf-brand"><span class="vf-brand-mark">'
-        + icon("compass", 22)
-        + '</span><div><div class="vf-brand-name">VoyageFlow AI</div>'
-        '<div class="vf-brand-sub">Intelligent travel research</div></div></div>',
+        '<div class="brand-name">VoyageFlow AI</div>'
+        '<div class="brand-description">'
+        'Your intelligent travel companion'
+        '</div>',
         unsafe_allow_html=True,
     )
+
     st.divider()
-    st.markdown('<div class="vf-side-heading">Your Session</div>', unsafe_allow_html=True)
+
+    st.markdown(
+        '<div class="sidebar-title">Travel session</div>',
+        unsafe_allow_html=True,
+    )
+
     st.text_input(
         "Session ID",
         value=st.session_state.thread_id,
         disabled=True,
-        help="LangGraph checkpoint session thread ID.",
+        help="Your LangGraph checkpoint session in PostgreSQL.",
     )
-    if st.button("Start a new trip", use_container_width=True):
-        st.session_state.thread_id = new_thread_id()
-        st.session_state.trip_query = ""
-        st.session_state.last_plan = None
-        st.rerun()
+
+    st.button(
+        "Start a new trip",
+        key="new_trip",
+        on_click=start_new_trip,
+        use_container_width=True,
+    )
+
     st.divider()
-    st.markdown('<div class="vf-side-heading">Workflow Agents</div>', unsafe_allow_html=True)
-    steps = [
-        ("plane", "Flight research"),
-        ("hotel", "Hotel discovery"),
-        ("map", "Day-by-day itinerary"),
-        ("sparkle", "Final travel plan"),
-    ]
+
     st.markdown(
-        "".join(
-            f'<div class="vf-step"><span class="vf-step-icon">{icon(kind, 16)}</span>'
-            f'<span>{escape(label)}</span></div>'
-            for kind, label in steps
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="vf-tech-badge">⚡ Powered by LangGraph, Groq, Tavily, Aviationstack & PostgreSQL.<br><br>🔒 Secure & private session data.</div>',
+        '<div class="sidebar-title">Your AI travel team</div>',
         unsafe_allow_html=True,
     )
 
+    for number, label in enumerate(
+        [
+            "Flight research",
+            "Hotel discovery",
+            "Itinerary planning",
+            "Final travel plan",
+        ],
+        start=1,
+    ):
+        st.markdown(
+            '<div class="agent-step">'
+            f'<span class="step-number">{number}</span>'
+            f'<span>{escape(label)}</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.divider()
+
+    st.markdown(
+        '<div class="sidebar-title">Powered by</div>',
+        unsafe_allow_html=True,
+    )
+
+    technology_badges = "".join(
+        f'<span class="tech-badge">{escape(name)}</span>'
+        for name in (
+            "LangGraph",
+            "Groq",
+            "Tavily",
+            "Aviationstack",
+            "PostgreSQL",
+        )
+    )
+
+    st.markdown(
+        f'<div class="tech-list">{technology_badges}</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="sidebar-notice">'
+        'Travel suggestions are for research and planning. '
+        'Verify prices, schedules and availability before booking.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ============================================================
+# LANDING PAGE
+# ============================================================
+
 st.markdown(
-    '<section class="vf-hero">'
-    f'<div class="vf-overline">{icon("palm", 15)} Adventure Awaits · Travel Planned Beautifully</div>'
-    '<h1 class="vf-title">The world is waiting.</h1>'
-    '<p class="vf-description">Meet <strong>VoyageFlow AI</strong> — your intelligent travel research companion powered by coordinated AI agents.</p>'
-    '</section>',
+    '<div class="hero">'
+    '<div class="hero-eyebrow">'
+    'INTELLIGENT TRAVEL PLANNING'
+    '</div>'
+    '<h1 class="hero-title">'
+    'Your next journey starts here.'
+    '</h1>'
+    '<p class="hero-description">'
+    'Meet <strong>VoyageFlow AI</strong>. '
+    'Explore destinations, research travel options, '
+    'and create a personalized itinerary with '
+    'four coordinated AI agents.'
+    '</p>'
+    '</div>',
     unsafe_allow_html=True,
 )
 
-st.markdown(f'<div class="vf-label">{icon("camera", 18)} Explore Popular Destinations</div>', unsafe_allow_html=True)
-st.markdown('<div class="vf-dest-note">Click any destination card below to quickly load a starting request</div>', unsafe_allow_html=True)
-cols = st.columns(4, gap="small")
-for col, (city, country, flag_icon, query) in zip(cols, DESTINATIONS):
-    with col:
-        if st.button(
-            f"{flag_icon}  {city}  ·  {country}",
-            key=f"destination_{city.lower()}",
-            use_container_width=True,
-        ):
-            st.session_state.trip_query = query
+st.markdown(
+    '<div class="section-heading">'
+    'Explore a destination'
+    '</div>',
+    unsafe_allow_html=True,
+)
 
-st.markdown('<div class="vf-rule"></div>', unsafe_allow_html=True)
-st.markdown(f'<div class="vf-label">{icon("map", 18)} Tell us about your trip</div>', unsafe_allow_html=True)
+columns = st.columns(4, gap="small")
+
+for column, (city, query) in zip(columns, DESTINATIONS):
+    with column:
+        st.button(
+            city,
+            key=f"destination_{city.lower()}",
+            on_click=select_destination,
+            args=(query,),
+            use_container_width=True,
+        )
+
+
+# ============================================================
+# TRAVEL INPUT
+# ============================================================
+
+st.markdown(
+    '<div class="section-heading">Describe your trip</div>',
+    unsafe_allow_html=True,
+)
+
 st.text_area(
     "Travel request",
     key="trip_query",
     label_visibility="collapsed",
-    placeholder="Where would you like to go? Add dates, departure city, travelers and budget…",
-    height=110,
+    placeholder=(
+        "Example: Plan a 5-day Tokyo trip from Helsinki "
+        "for two adults, including hotels and sightseeing."
+    ),
+    height=100,
 )
-submitted = st.button("Create my travel plan", type="primary", use_container_width=True)
+
+submitted = st.button(
+    "Create my travel plan",
+    key="generate_plan",
+    type="primary",
+    use_container_width=True,
+)
+
 st.markdown(
-    '<div class="vf-help">💡 Tip: Be specific with your dates, departure location, and preferences for the best results.</div>',
+    '<div class="section-help">'
+    'Research and planning only. '
+    'Prices and availability must be verified.'
+    '</div>',
     unsafe_allow_html=True,
 )
 
+
+# ============================================================
+# EXECUTE LANGGRAPH WORKFLOW
+# ============================================================
+
 if submitted:
     query = st.session_state.trip_query.strip()
+
     if not query:
-        st.warning("Please enter or select where you want to go before generating a plan.")
+        st.warning("Please describe your trip first.")
     else:
         st.session_state.last_plan = None
-        results = {"flight_results": "", "hotel_results": "", "itinerary": "", "final_response": ""}
-        completed = 0
-        st.markdown(f'<div class="vf-label">{icon("sparkle", 18)} Research in progress</div>', unsafe_allow_html=True)
-        
-        status = st.status("🚀 Coordinating your four AI agents (Flights, Hotels, Itinerary, Final Plan)...", expanded=True)
+
+        results = {
+            "flight_results": "",
+            "hotel_results": "",
+            "itinerary": "",
+            "final_response": "",
+        }
+
+        completed_steps = 0
+
+        status = st.status(
+            "Your AI travel team is researching...",
+            expanded=True,
+        )
+
         try:
             with status:
+                initial_state = {
+                    "messages": [
+                        HumanMessage(content=query),
+                    ],
+                    "user_query": query,
+                    "flight_results": "",
+                    "hotel_results": "",
+                    "itinerary": "",
+                    "llm_calls": 0,
+                }
+
+                config = {
+                    "configurable": {
+                        "thread_id": st.session_state.thread_id,
+                    }
+                }
+
                 for chunk in app.stream(
-                    {
-                        "messages": [HumanMessage(content=query)],
-                        "user_query": query,
-                        "flight_results": "",
-                        "hotel_results": "",
-                        "itinerary": "",
-                        "llm_calls": 0,
-                    },
-                    config={"configurable": {"thread_id": st.session_state.thread_id}},
+                    initial_state,
+                    config=config,
                     stream_mode="updates",
                 ):
-                    for node, update in chunk.items():
+                    for node_name, update in chunk.items():
+
+                        if node_name not in AGENTS:
+                            continue
+
                         if not isinstance(update, dict):
                             continue
-                        if node not in AGENTS:
-                            continue
-                        completed += 1
-                        label, result_key = AGENTS[node]
-                        st.write(f"✓ {label} completed successfully")
-                        if node == "final_agent":
+
+                        completed_steps += 1
+                        label, result_key = AGENTS[node_name]
+
+                        if node_name == "final_agent":
                             messages = update.get("messages") or []
+
                             if messages:
-                                results[result_key] = str(messages[-1].content)
+                                results[result_key] = str(
+                                    messages[-1].content
+                                )
                         else:
-                            results[result_key] = str(update.get(result_key) or "")
-                if not results["final_response"]:
-                    raise RuntimeError("Workflow returned no final response")
-                status.update(label="✨ Your travel plan is fully ready!", state="complete", expanded=False)
+                            results[result_key] = str(
+                                update.get(result_key) or ""
+                            )
+
+                        st.write(f"✓ {label} completed")
+
+            if not results["final_response"]:
+                raise RuntimeError(
+                    "Workflow returned no final response."
+                )
+
+            status.update(
+                label="Your travel plan is ready",
+                state="complete",
+                expanded=False,
+            )
+
             st.session_state.last_plan = {
                 "query": query,
                 "thread_id": st.session_state.thread_id,
                 "results": results,
-                "steps_completed": completed,
+                "steps_completed": completed_steps,
             }
-        except Exception as e:
-            status.update(label="⚠️ Unable to complete the plan", state="error", expanded=False)
-            st.error(f"Travel research couldn't finish: {e}")
+
+        except Exception:
+            logger.exception("Travel planning workflow failed")
+
+            status.update(
+                label="Unable to generate travel plan",
+                state="error",
+                expanded=False,
+            )
+
+            st.error(
+                "The travel planning workflow encountered an error. "
+                "Check the Python terminal for details."
+            )
+
+
+# ============================================================
+# RESULTS DASHBOARD
+# ============================================================
 
 plan = st.session_state.last_plan
+
 if plan:
     results = plan["results"]
-    st.markdown('<div class="vf-rule"></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="vf-label">{icon("sparkle", 18)} Your completed travel plan</div>', unsafe_allow_html=True)
-    
-    m1, m2 = st.columns(2)
-    m1.metric("Agent steps completed", plan["steps_completed"])
-    m2.metric("Workflow status", "Ready & Verified")
-    
-    tab_flights, tab_hotels, tab_itinerary, tab_final = st.tabs(
-        ["✈️ Flights", "🏨 Hotels", "🗺️ Itinerary", "✨ Final Plan"]
+
+    st.markdown(
+        '<div class="results-intro">'
+        '<div class="results-kicker">YOUR TRAVEL RESEARCH</div>'
+        '<div class="results-title">Your journey, thoughtfully planned.</div>'
+        '<div class="results-subtitle">'
+        'Explore flight information, hotel research and your '
+        'personalized itinerary. Review sources before booking.'
+        '</div>'
+        '</div>',
+        unsafe_allow_html=True,
     )
+
+    metric_columns = st.columns(2)
+
+    metric_columns[0].metric(
+        "Agent steps completed",
+        plan["steps_completed"],
+    )
+
+    metric_columns[1].metric(
+        "Workflow",
+        "Complete",
+    )
+
+    st.write("")
+
+    tab_flights, tab_hotels, tab_itinerary, tab_final = st.tabs(
+        [
+            "Flights",
+            "Hotels",
+            "Itinerary",
+            "Final plan",
+        ]
+    )
+
+    # --------------------------------------------------------
+    # FLIGHT RESEARCH
+    # --------------------------------------------------------
+
     with tab_flights:
-        with st.container(border=True):
-            st.markdown(results["flight_results"] or "_No flight information returned._", unsafe_allow_html=False)
-        st.caption("Flight status info is for reference only.")
+        st.markdown("#### Flight information")
+
+        st.info(
+            "These are general flight-status records from "
+            "Aviationstack. The current integration does not "
+            "filter by your requested route or travel date. "
+            "They are not ticket offers."
+        )
+
+        flights = parse_flights(results["flight_results"])
+
+        if flights:
+            for index, flight in enumerate(flights, start=1):
+                airline = safe_html(
+                    flight.get("airline") or "Unknown airline"
+                )
+                departure = safe_html(
+                    flight.get("departure") or "Unknown airport"
+                )
+                arrival = safe_html(
+                    flight.get("arrival") or "Unknown airport"
+                )
+                status_text = safe_html(
+                    flight.get("status") or "Unknown"
+                )
+
+                st.markdown(
+                    '<div class="result-card">'
+                    f'<div class="card-eyebrow">Flight record {index}</div>'
+                    f'<div class="card-title">{airline}</div>'
+                    '<div class="flight-route">'
+                    '<div>'
+                    '<div class="card-eyebrow">Departure</div>'
+                    f'<div class="flight-airport">{departure}</div>'
+                    '</div>'
+                    '<div class="flight-route-arrow">&rarr;</div>'
+                    '<div>'
+                    '<div class="card-eyebrow">Arrival</div>'
+                    f'<div class="flight-airport">{arrival}</div>'
+                    '</div>'
+                    '</div>'
+                    f'<span class="flight-status">{status_text}</span>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.warning(
+                "No structured flight records were available."
+            )
+
+        with st.expander("View original flight response"):
+            st.code(
+                results["flight_results"] or "No flight data",
+                language="text",
+            )
+
+    # --------------------------------------------------------
+    # HOTEL RESEARCH
+    # --------------------------------------------------------
+
     with tab_hotels:
-        with st.container(border=True):
-            st.markdown(results["hotel_results"] or "_No hotel information returned._", unsafe_allow_html=False)
+        st.markdown("#### Hotel and accommodation research")
+
+        st.caption(
+            "These are web search sources, not verified "
+            "hotel room offers or availability."
+        )
+
+        hotels = parse_hotels(results["hotel_results"])
+
+        if hotels:
+            for index, hotel in enumerate(hotels, start=1):
+                st.markdown(
+                    '<div class="result-card">'
+                    f'<div class="card-eyebrow">Research source {index}</div>'
+                    f'<div class="card-title">'
+                    f'{safe_html(hotel["title"])}'
+                    '</div>'
+                    f'<div class="card-muted">'
+                    f'{safe_html(hotel["description"] or "No summary available.")}'
+                    '</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+
+                source = safe_source_url(hotel["url"])
+
+                if source:
+                    st.link_button(
+                        "View source",
+                        url=source,
+                        key=f"hotel_source_{index}",
+                    )
+        else:
+            st.markdown(
+                results["hotel_results"]
+                or "_No hotel research available._",
+                unsafe_allow_html=False,
+            )
+
+    # --------------------------------------------------------
+    # ITINERARY
+    # --------------------------------------------------------
+
     with tab_itinerary:
+        st.markdown("#### Your day-by-day itinerary")
+
+        st.caption(
+            "An AI-generated travel outline based on "
+            "the available research."
+        )
+
         with st.container(border=True):
-            st.markdown(results["itinerary"] or "_No itinerary generated._", unsafe_allow_html=False)
+            st.markdown(
+                results["itinerary"]
+                or "_No itinerary generated._",
+                unsafe_allow_html=False,
+            )
+
+    # --------------------------------------------------------
+    # FINAL TRAVEL PLAN
+    # --------------------------------------------------------
+
     with tab_final:
+        st.markdown("#### Complete travel plan")
+
+        st.caption(
+            "Your combined travel research and "
+            "personalized recommendations."
+        )
+
         with st.container(border=True):
-            st.markdown(results["final_response"] or "_No final response generated._", unsafe_allow_html=False)
-            
+            st.markdown(
+                results["final_response"]
+                or "_No final plan generated._",
+                unsafe_allow_html=False,
+            )
+
+        st.info(
+            "Before booking, confirm all flight schedules, "
+            "hotel rates, opening hours and availability "
+            "with the relevant providers."
+        )
+
+    # --------------------------------------------------------
+    # DOWNLOAD
+    # --------------------------------------------------------
+
+    st.write("")
+
     st.download_button(
-        "📥 Download full travel plan (.md)",
-        data=export_markdown(plan["query"], plan["thread_id"], results),
-        file_name=f"voyageflow_plan_{datetime.now():%Y%m%d}.md",
+        "Download complete travel plan (.md)",
+        data=export_markdown(
+            plan["query"],
+            plan["thread_id"],
+            results,
+        ),
+        file_name=(
+            f"voyageflow_plan_{datetime.now():%Y%m%d}.md"
+        ),
         mime="text/markdown",
         use_container_width=True,
     )
-    
+
+
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.divider()
+
+st.caption(
+    "VoyageFlow AI · Intelligent travel research and planning"
+)
