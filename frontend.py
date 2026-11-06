@@ -1,4 +1,4 @@
-"""VoyageFlow AI — Streamlit interface for the LangGraph travel planner."""
+"""VoyageFlow AI: Streamlit interface for the travel-planning LangGraph."""
 
 from __future__ import annotations
 
@@ -12,184 +12,235 @@ from main import app
 
 
 st.set_page_config(
-    page_title="VoyageFlow AI | Multi-Agent Travel Planner",
+    page_title="VoyageFlow AI | Travel Planner",
     page_icon="✈️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Only static, application-owned markup/CSS uses unsafe_allow_html.
-# Never interpolate user input or LLM/API output into HTML.
+# This HTML/CSS is authored by the application; untrusted model responses
+# are always passed separately to Streamlit's Markdown renderer.
 st.markdown(
     """
     <style>
-    .stApp {
-        background: linear-gradient(160deg, #081323 0%, #0d1a2c 55%, #101b30 100%);
-        color: #e8effb;
-    }
-    .block-container {max-width: 1160px; padding-top: 2rem; padding-bottom: 3rem;}
-    [data-testid="stSidebar"] {background: #0b1728;}
-    [data-testid="stSidebar"] * {color: #dce8f8;}
-    .vf-hero {
-        background: linear-gradient(115deg, #163b63, #102a49 50%, #123b48);
-        border: 1px solid #315477;
-        border-radius: 22px;
-        padding: 2.3rem 2.4rem;
-        margin-bottom: 1.3rem;
-    }
-    .vf-kicker {font-size: .78rem; letter-spacing: .16em; color: #9ed7ff;
-                text-transform: uppercase; font-weight: 700;}
-    .vf-title {font-size: clamp(2rem, 5vw, 3.3rem); font-weight: 800;
-               color: #fff; line-height: 1.15; margin: .45rem 0;}
-    .vf-subtitle {color: #cfdef0; font-size: 1rem; max-width: 680px;}
-    .vf-section {font-size: 1.2rem; font-weight: 700; color: #edf5ff;
-                 margin: 1.2rem 0 .45rem;}
-    .vf-footnote {color: #9db5ce; font-size: .84rem;}
-    div[data-testid="stMetric"] {
-        background: #15253d; border: 1px solid #2d4665;
-        padding: .85rem 1rem; border-radius: 13px;
-    }
-    div[data-testid="stMetric"] * {color: #e9f3ff;}
-    div.stButton > button[kind="primary"] {
-        background: #2875cb; color: white; border-radius: 10px;
-        border: 1px solid #4795ef; font-weight: 700;
-    }
+      :root { color-scheme: dark; }
+      .stApp, [data-testid="stAppViewContainer"] {
+        background: #0b1220;
+        color: #eaf1fc;
+      }
+      [data-testid="stHeader"] { background: #0b1220; }
+      [data-testid="stToolbar"] { background: transparent; }
+      .block-container {
+        max-width: 1060px;
+        padding-top: 1.25rem !important;
+        padding-bottom: 2rem !important;
+      }
+      [data-testid="stSidebar"] { background: #101c2e; }
+      [data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .65rem; }
+      [data-testid="stSidebar"] h1,
+      [data-testid="stSidebar"] h2,
+      [data-testid="stSidebar"] h3,
+      [data-testid="stSidebar"] p,
+      [data-testid="stSidebar"] label { color: #eaf1fc !important; }
+      [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
+        color: #adc1d9 !important;
+      }
+      [data-testid="stSidebar"] [data-testid="stAlert"] {
+        background: #1c344a !important;
+        border: 1px solid #3b6076 !important;
+      }
+      [data-testid="stSidebar"] [data-testid="stAlert"] * {
+        color: #eaf3fc !important;
+      }
+      .vf-hero {
+        border: 1px solid #294563;
+        border-radius: 15px;
+        background: linear-gradient(110deg, #152943, #123b47);
+        padding: 1.45rem 1.65rem;
+        margin-bottom: .8rem;
+      }
+      .vf-eyebrow { font-size: .74rem; letter-spacing: .12em;
+        text-transform: uppercase; color: #9dd7ef; font-weight: 700; }
+      .vf-hero h1 { color: #fff !important; font-size: 2rem;
+        line-height: 1.17; margin: .32rem 0 .45rem; padding: 0; }
+      .vf-hero p { color: #d4e5f1 !important; font-size: .95rem;
+        line-height: 1.55; margin: 0; max-width: 710px; }
+      .vf-note { color: #a9bdd5; font-size: .79rem; margin-top: .75rem; }
+      div[data-testid="stButton"] > button,
+      div[data-testid="stDownloadButton"] > button {
+        background: #1b2c42 !important;
+        border: 1px solid #3b5570 !important;
+        color: #f2f7ff !important;
+        border-radius: 9px !important;
+        min-height: 2.65rem;
+        font-weight: 600;
+      }
+      div[data-testid="stButton"] > button *,
+      div[data-testid="stDownloadButton"] > button * {
+        color: #f2f7ff !important;
+      }
+      div[data-testid="stButton"] > button:hover,
+      div[data-testid="stDownloadButton"] > button:hover {
+        background: #29405e !important;
+        border-color: #75b9f5 !important;
+      }
+      div[data-testid="stButton"] > button[kind="primary"] {
+        background: #236ab5 !important;
+        border-color: #3484da !important;
+        color: #fff !important;
+      }
+      div[data-testid="stButton"] > button[kind="primary"]:hover {
+        background: #2d7ccc !important;
+      }
+      [data-testid="stTextArea"] textarea,
+      [data-testid="stTextInput"] input {
+        background: #142238 !important;
+        color: #f2f7ff !important;
+        border: 1px solid #3c5572 !important;
+        border-radius: 9px !important;
+      }
+      [data-testid="stTextArea"] textarea::placeholder {
+        color: #a5b7ca !important;
+        opacity: 1;
+      }
+      [data-testid="stTextInput"] input:disabled {
+        color: #d0deef !important;
+        -webkit-text-fill-color: #d0deef !important;
+      }
+      [data-testid="stMetric"] {
+        background: #142238; border: 1px solid #2d4562;
+        border-radius: 10px; padding: .65rem .9rem;
+      }
+      [data-testid="stMetric"] * { color: #edf5ff !important; }
+      [data-testid="stTabs"] button { color: #c6d9ec !important; }
+      [data-testid="stTabs"] button[aria-selected="true"] { color: #8ccafa !important; }
+      [data-testid="stStatusWidget"], [data-testid="stAlert"] {
+        border-radius: 10px;
+      }
+      @media (max-width: 700px) {
+        .block-container { padding-top: .75rem !important; }
+        .vf-hero { padding: 1.1rem; }
+        .vf-hero h1 { font-size: 1.65rem; }
+      }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-
 AGENT_LABELS = {
-    "flight_agent": "✈️ Flight research",
+    "flight_agent": "✈️ Flight information",
     "hotel_agent": "🏨 Hotel research",
-    "itinerary_agent": "🗓️ Itinerary planning",
-    "final_agent": "🤖 Final travel response",
+    "itinerary_agent": "🗓️ Itinerary",
+    "final_agent": "🤖 Final response",
+}
+EXAMPLES = {
+    "Tokyo": "Plan 7 days in Tokyo with hotels, attractions and a realistic budget.",
+    "Paris": "Plan 5 days in Paris departing from Helsinki, with hotels and sightseeing.",
+    "Rome": "Plan 4 days in Rome with hotels, food and historic attractions.",
+    "Bangkok": "Plan 6 days in Bangkok with hotels, food and sightseeing.",
 }
 
-EXAMPLE_TRIPS = {
-    "🇯🇵 Tokyo": "Plan a 7-day trip to Tokyo with hotels, sights, and a realistic budget.",
-    "🇫🇷 Paris": "Plan a 5-day Paris trip with hotel and sightseeing suggestions.",
-    "🇮🇹 Rome": "Plan a 4-day trip to Rome including hotels and cultural attractions.",
-    "🇹🇭 Bangkok": "Plan a 6-day Bangkok trip with hotels, food, and sightseeing.",
-}
 
-
-def fresh_thread_id() -> str:
-    """Return a unique checkpoint thread ID for a new travel session."""
+def new_thread_id() -> str:
     return f"travel-{uuid4().hex}"
 
 
-def make_markdown_plan(query: str, thread_id: str, results: dict) -> str:
-    """Build the Markdown download using completed agent results."""
-    generated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
-    return (
-        "# VoyageFlow AI — Travel Plan\n\n"
-        f"**Request:** {query}\n\n"
-        f"**Generated:** {generated}\n\n"
-        f"**Session:** {thread_id}\n\n"
-        "## Flight information\n\n"
-        f"{results.get('flight_results') or 'No data available.'}\n\n"
-        "## Hotel research\n\n"
-        f"{results.get('hotel_results') or 'No data available.'}\n\n"
-        "## Itinerary\n\n"
-        f"{results.get('itinerary') or 'No itinerary generated.'}\n\n"
-        "## Final recommendation\n\n"
-        f"{results.get('final_response') or 'No final response generated.'}\n\n"
-        "---\n\n"
-        "*Information is for planning only. Verify availability, prices, and schedules "
-        "with providers before making bookings.*\n"
+def export_markdown(query: str, thread_id: str, results: dict[str, str]) -> str:
+    sections = [
+        ("Flight information", "flight_results"),
+        ("Hotel research", "hotel_results"),
+        ("Itinerary", "itinerary"),
+        ("Final travel plan", "final_response"),
+    ]
+    content = [
+        "# VoyageFlow AI — Travel Plan",
+        f"**Request:** {query}",
+        f"**Generated:** {datetime.now().astimezone():%Y-%m-%d %H:%M %Z}",
+        f"**Session:** {thread_id}",
+    ]
+    for title, key in sections:
+        content.append(f"## {title}\n\n{results.get(key) or 'No data available.'}")
+    content.append(
+        "*For travel research only. Verify fares, schedules and availability "
+        "with providers before booking.*"
     )
+    return "\n\n".join(content) + "\n"
 
 
-# Streamlit reruns the script on interaction, so retain UI data in session_state.
 if "thread_id" not in st.session_state:
-    st.session_state.thread_id = fresh_thread_id()
+    st.session_state.thread_id = new_thread_id()
 if "trip_query" not in st.session_state:
     st.session_state.trip_query = ""
 if "last_plan" not in st.session_state:
     st.session_state.last_plan = None
 
 with st.sidebar:
-    st.title("✈️ VoyageFlow AI")
-    st.caption("Your multi-agent travel planning companion")
+    st.markdown("### ✈️ VoyageFlow AI")
+    st.caption("Multi-agent travel research")
     st.divider()
-    st.subheader("Travel session")
+    st.markdown("**Current session**")
     st.text_input(
         "Session ID",
         value=st.session_state.thread_id,
         disabled=True,
-        help="Used by LangGraph to identify this session's PostgreSQL checkpoints.",
+        help="Identifies the LangGraph conversation stored in PostgreSQL.",
     )
-    if st.button("＋ New travel session", use_container_width=True):
-        st.session_state.thread_id = fresh_thread_id()
+    if st.button("New session", use_container_width=True):
+        st.session_state.thread_id = new_thread_id()
         st.session_state.trip_query = ""
         st.session_state.last_plan = None
         st.rerun()
-
     st.divider()
-    st.subheader("How it works")
-    for label in AGENT_LABELS.values():
-        st.write(label)
+    st.markdown("**How it works**")
+    st.caption("① Flight information → ② Hotel research → ③ Itinerary → ④ Final plan")
     st.divider()
-    st.caption("Powered by LangGraph · Groq · Tavily · Aviationstack · PostgreSQL")
-    st.info("Trip suggestions are for research and planning, not confirmed bookings.")
+    st.caption("LangGraph · Groq · Tavily · Aviationstack · PostgreSQL")
+    st.caption("Research and planning only. No bookings are made.")
 
 st.markdown(
     """
     <div class="vf-hero">
-        <div class="vf-kicker">Plan smarter · Explore further</div>
-        <div class="vf-title">✈️ VoyageFlow AI</div>
-        <div class="vf-subtitle">
-            One travel request. Four specialized AI agents.
-            Explore flight information, research hotels, and build a personalized itinerary.
-        </div>
+      <div class="vf-eyebrow">Your AI travel research assistant</div>
+      <h1>✈️ VoyageFlow AI</h1>
+      <p>Explore flight information, research hotels and build a personalized
+      itinerary with four coordinated AI agents.</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-st.markdown('<div class="vf-section">🌍 Find inspiration</div>', unsafe_allow_html=True)
-cols = st.columns(len(EXAMPLE_TRIPS))
-for col, (destination, sample_query) in zip(cols, EXAMPLE_TRIPS.items()):
+st.markdown("**Popular trip ideas**")
+cols = st.columns(4, gap="small")
+for col, (destination, query) in zip(cols, EXAMPLES.items()):
     with col:
-        if st.button(destination, use_container_width=True):
-            st.session_state.trip_query = sample_query
+        if st.button(destination, key=f"example_{destination}", use_container_width=True):
+            st.session_state.trip_query = query
 
-st.markdown('<div class="vf-section">🧭 Describe your trip</div>', unsafe_allow_html=True)
+st.markdown("**Describe your trip**")
 st.text_area(
-    "Where would you like to go?",
+    "Travel request",
     key="trip_query",
-    placeholder=(
-        "Example: Plan 5 days in Paris in April, departing from Helsinki. "
-        "Include hotels and a day-by-day itinerary."
-    ),
-    height=125,
     label_visibility="collapsed",
+    placeholder="Example: Plan a 5-day trip to Paris in April from Helsinki, including hotels and a daily itinerary.",
+    height=110,
 )
 
-submit = st.button("✨ Generate travel plan", type="primary", use_container_width=True)
+submitted = st.button("Generate travel plan", type="primary", use_container_width=True)
+st.caption("Results are AI-assisted research, not verified prices or reservations.")
 
-if submit:
+if submitted:
     query = st.session_state.trip_query.strip()
     if not query:
-        st.warning("Please describe your trip before generating a plan.")
+        st.warning("Enter a destination or describe your travel plans first.")
     else:
-        # Do not show a previous plan as if it were the new result.
         st.session_state.last_plan = None
-        results = {
-            "flight_results": "",
-            "hotel_results": "",
-            "itinerary": "",
-            "final_response": "",
-        }
+        results = {"flight_results": "", "hotel_results": "", "itinerary": "", "final_response": ""}
         steps_completed = 0
-        st.subheader("🤖 Agent activity")
-        status_box = st.status("Preparing your travel plan…", expanded=True)
-
+        st.markdown("### Agent progress")
+        status = st.status("Researching your trip…", expanded=True)
         try:
-            with status_box:
-                updates = app.stream(
+            with status:
+                for chunk in app.stream(
                     {
                         "messages": [HumanMessage(content=query)],
                         "user_query": query,
@@ -200,29 +251,25 @@ if submit:
                     },
                     config={"configurable": {"thread_id": st.session_state.thread_id}},
                     stream_mode="updates",
-                )
-                for chunk in updates:
-                    for node_name, update in chunk.items():
+                ):
+                    for node, update in chunk.items():
                         if not isinstance(update, dict):
                             continue
                         steps_completed += 1
-                        label = AGENT_LABELS.get(node_name, node_name)
-                        st.markdown(f"**{label}** — completed")
-                        if node_name == "flight_agent":
+                        st.write(f"✓ {AGENT_LABELS.get(node, node)}")
+                        if node == "flight_agent":
                             results["flight_results"] = update.get("flight_results") or ""
-                        elif node_name == "hotel_agent":
+                        elif node == "hotel_agent":
                             results["hotel_results"] = update.get("hotel_results") or ""
-                        elif node_name == "itinerary_agent":
+                        elif node == "itinerary_agent":
                             results["itinerary"] = update.get("itinerary") or ""
-                        elif node_name == "final_agent":
+                        elif node == "final_agent":
                             messages = update.get("messages") or []
                             if messages:
                                 results["final_response"] = str(messages[-1].content)
-
                 if not results["final_response"]:
-                    raise RuntimeError("The workflow finished without a final travel response.")
-                status_box.update(label="Travel plan ready", state="complete", expanded=False)
-
+                    raise RuntimeError("Workflow returned no final response")
+                status.update(label="Travel plan ready", state="complete", expanded=False)
             st.session_state.last_plan = {
                 "query": query,
                 "thread_id": st.session_state.thread_id,
@@ -230,50 +277,35 @@ if submit:
                 "steps_completed": steps_completed,
             }
         except Exception:
-            status_box.update(label="Travel planning failed", state="error", expanded=True)
-            st.error(
-                "The travel plan could not be completed. Check the application terminal "
-                "for details and try again."
-            )
-            # Internal exception details are intentionally not printed to the UI.
+            status.update(label="Unable to complete plan", state="error", expanded=False)
+            st.error("Travel research failed. Review the server terminal for details and try again.")
 
 plan = st.session_state.last_plan
 if plan:
     results = plan["results"]
-    st.divider()
-    st.subheader("📋 Your travel plan")
-    a, b, c = st.columns(3)
-    a.metric("Agent steps completed", plan["steps_completed"])
-    b.metric("Workflow", "Completed")
-    c.metric("Session", "Saved in PostgreSQL")
+    st.markdown("### Your travel plan")
+    m1, m2 = st.columns(2)
+    m1.metric("Agent steps completed", plan["steps_completed"])
+    m2.metric("Status", "Complete")
 
     flight_tab, hotel_tab, itinerary_tab, final_tab = st.tabs(
-        ["✈️ Flights", "🏨 Hotels", "🗓️ Itinerary", "🌟 Final plan"]
+        ["✈️ Flights", "🏨 Hotels", "🗓️ Itinerary", "✨ Final plan"]
     )
     with flight_tab:
         st.markdown(results["flight_results"] or "_No flight information returned._")
-        st.caption("Flight-status information is not the same as ticket pricing or booking availability.")
+        st.caption("Flight information is not a ticket quote or confirmed availability.")
     with hotel_tab:
         st.markdown(results["hotel_results"] or "_No hotel information returned._")
-        st.caption("Check prices and availability directly with the hotel or booking provider.")
     with itinerary_tab:
         st.markdown(results["itinerary"] or "_No itinerary generated._")
     with final_tab:
         with st.container(border=True):
-            # Render model output as Markdown, never as interpolated raw HTML.
             st.markdown(results["final_response"], unsafe_allow_html=False)
 
-    filename = f"voyageflow_plan_{datetime.now().strftime('%Y%m%d')}.md"
     st.download_button(
-        "⬇️ Download travel plan (.md)",
-        data=make_markdown_plan(plan["query"], plan["thread_id"], results),
-        file_name=filename,
+        "Download plan (.md)",
+        data=export_markdown(plan["query"], plan["thread_id"], results),
+        file_name=f"voyageflow_plan_{datetime.now():%Y%m%d}.md",
         mime="text/markdown",
         use_container_width=True,
     )
-    st.caption("Travel plans are downloaded on demand; this UI does not automatically write local files.")
-
-st.markdown(
-    '<p class="vf-footnote">VoyageFlow AI · AI-assisted travel research, not a booking service.</p>',
-    unsafe_allow_html=True,
-)
